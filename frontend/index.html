@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="kk">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>QuizQuest AI</title>
+
+  <!-- fonts + styles -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 🔄 loader -->
+  <div id="loader" class="loader hidden">
+    <div class="spinner"></div>
+    <p>Сұрақтар генерациялануда…</p>
+  </div>
+
+  <div class="wrapper">
+    <header>
+      <h1>QuizQuest AI</h1>
+      <nav>
+        <button id="navQuiz"    class="nav-btn active">Викторина</button>
+        <button id="navCabinet" class="nav-btn">Кабинет</button>
+      </nav>
+    </header>
+
+    <!-- ===== параметрлер ===== -->
+    <section id="setup" class="card">
+      <h2 class="section-title">Параметрлер</h2>
+      <div class="grid-2">
+        <div class="field"><label>Тіл</label><select id="language">
+          <option value="Kazakh">Қазақша</option><option value="Russian">Русский</option><option value="English">English</option></select></div>
+        <div class="field"><label>Пән</label><select id="subject">
+            <option value="History of Kazakhstan">Тарих</option>
+            <option value="Physics">Физика</option>
+            <option value="Kazakh literature">Әдебиет</option>
+            <option value="Chemistry">Химия</option>
+            <option value="Biology">Биология</option>
+            <option value="Kazakh language">Қазақ тілі</option>
+            <option value="Mathematics">Математика</option>
+            <option value="Geometry">Геометрия</option></select></div>
+        <div class="field"><label>Деңгей</label><select id="difficulty">
+          <option value="easy">Бастапқы</option><option value="medium">Орташа</option><option value="hard">Жоғары</option></select></div>
+        <div class="field"><label>Сұрақ саны</label><input type="number" id="qCount" min="1" max="15" value="5"></div>
+        <div class="field"><label>Уақыт / сұрақ (сек)</label><input type="number" id="timePerQ" min="10" max="120" value="30"></div>
+      </div>
+      <button id="startBtn" class="btn primary">Бастау</button>
+    </section>
+
+    <!-- ===== викторина ===== -->
+    <section id="quiz" class="card hidden">
+      <div class="quiz-header"><span id="questionNumber"></span><span id="timer" class="timer"></span></div>
+      <p id="questionText" class="question"></p>
+      <div id="options" class="options"></div>
+      <button id="submitBtn" class="btn primary">Жауап жіберу</button>
+    </section>
+
+    <!-- ===== нәтиже ===== -->
+    <section id="result" class="card hidden">
+      <h2>Нәтиже</h2>
+      <p id="scoreText"></p>
+      <button id="restartBtn" class="btn primary">Қайта бастау</button>
+    </section>
+
+    <!-- ===== кабинет ===== -->
+    <section id="cabinet" class="card hidden">
+      <h2>Менің кабинетим</h2>
+
+      <h3>Өткен викториналар</h3>
+      <table id="historyTable"><thead>
+        <tr><th>Күні</th><th>Пән</th><th>Деңгей</th><th>Дұрыс / Барлығы</th></tr>
+      </thead><tbody></tbody></table>
+
+      <h3>Статистика (пән бойынша)</h3>
+      <ul id="statsList"></ul>
+
+      <button id="clearHistory" class="btn secondary">Тарихты тазалау</button>
+    </section>
+  </div>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
