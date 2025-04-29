@@ -1,102 +1,168 @@
-/*  Fixed OpenAI API Key (demo) */
+/* -----------------------------------------------------------
+ *  QuizQuest AI – Front-end logic (frontend/js/app.js)
+ *  Никаких секретных ключей!  Браузер общается лишь с /api.
+ * -----------------------------------------------------------
+ */
 
-/*  State  */
-let questions=[], answers=[], current=0, score=0, timerId=null, timePerQ=30, sessionMeta={};
+/* =======  state  ======= */
+let questions = [];          // [{question, options, answerIndex}, …]
+let answers   = [];          // per-question user choices
+let current   = 0;           // current question idx
+let score     = 0;           // correct answers counter
+let timerId   = null;        // setInterval id
+let timePerQ  = 30;          // seconds for every question
+let session   = {};          // meta for history
 
-/*  DOM helpers  */
-const $  = s=>document.querySelector(s);
-const txt=(s,t)=>$(s).textContent=t;
-const show=id=>{ hideAll(); $("#"+id).classList.remove("hidden"); }
-const hideAll=()=>["setup","quiz","result","cabinet"].forEach(i=>$("#"+i).classList.add("hidden"));
-const loader=on=>$("#loader").classList.toggle("hidden",!on);
+/* =======  tiny helpers  ======= */
+const $        = s => document.querySelector(s);
+const txt      = (sel, t) => $(sel).textContent = t;
+const hideAll  = () => ["setup", "quiz", "result", "cabinet"]
+                      .forEach(id => $("#" + id).classList.add("hidden"));
+const show     = id => { hideAll(); $("#" + id).classList.remove("hidden"); };
+const loader   = on => $("#loader").classList.toggle("hidden", !on);
 
-/*  nav  */
-$("#navQuiz").onclick   = ()=>{navSel("navQuiz");show("setup");};
-$("#navCabinet").onclick= ()=>{navSel("navCabinet");renderCabinet();show("cabinet");};
-const navSel=id=>document.querySelectorAll(".nav-btn").forEach(b=>b.classList.toggle("active",b.id===id));
+/* =======  navigation bar  ======= */
+const navSel = id => document
+  .querySelectorAll(".nav-btn")
+  .forEach(b => b.classList.toggle("active", b.id === id));
 
-/*  Start  */
-$("#startBtn").onclick=async()=>{
-  const lang=$("#language").value, subj=$("#subject").value, diff=$("#difficulty").value;
-  const cnt=+$("#qCount").value||5; timePerQ=+$("#timePerQ").value||30;
+$("#navQuiz")   .onclick = () => { navSel("navQuiz");   show("setup");  };
+$("#navCabinet").onclick = () => { navSel("navCabinet"); renderCabinet(); show("cabinet"); };
 
-  navSel("navQuiz"); hideAll(); show("quiz"); loader(true);
+/* =======  start button  ======= */
+$("#startBtn").onclick = async () => {
+  const language   = $("#language").value;
+  const subject    = $("#subject").value;
+  const difficulty = $("#difficulty").value;
+  const count      = +$("#qCount").value    || 5;
+        timePerQ  = +$("#timePerQ").value  || 30;
 
-  try{ questions=await genQs(lang,subj,diff,cnt); loader(false); beginQuiz(lang,subj,diff,cnt);}
-  catch(e){loader(false);alert("GPT қатесі: "+e.message);show("setup");}
+  navSel("navQuiz");
+  hideAll(); show("quiz"); loader(true);
+
+  try {
+    questions = await fetchQuestions(language, subject, difficulty, count);
+    loader(false);
+    beginQuiz({ language, subject, difficulty, total: count });
+  } catch (err) {
+    loader(false);
+    alert("Сервер қатесі: " + err.message);
+    show("setup");
+  }
 };
 
-/*  GPT  */
-async function genQs(lang,subj,level,n){
-  const prompt=`Generate ${n} ${level}-level multiple-choice quiz questions in ${lang}. Topic: ${subj}. Return JSON with question, options, answerIndex.`;
-  const r=await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Authorization":"Bearer "+API_KEY},
-    body:JSON.stringify({model:"gpt-4o-mini",messages:[
-      {role:"system",content:"You are an educational content generator."},
-      {role:"user",content:prompt}]})
+/* =======  ask backend for questions  ======= */
+async function fetchQuestions(language, subject, difficulty, count) {
+  const resp = await fetch("/api/generate", {
+    method : "POST",
+    headers: { "Content-Type": "application/json" },
+    body   : JSON.stringify({ language, subject, difficulty, count })
   });
-  const d=await r.json();
-  let raw=d.choices?.[0]?.message?.content||"[]";
-  if(raw.startsWith("```")) raw=raw.replace(/```[a-z]*|```/g,"");
-  return JSON.parse(raw);
+  if (!resp.ok) throw new Error("HTTP " + resp.status);
+  return resp.json();
 }
 
-/*  Quiz flow  */
-function beginQuiz(lang,subj,diff,cnt){
-  current=score=0; answers=[];
-  sessionMeta={date:Date.now(),language:lang,subject:subj,difficulty:diff,total:cnt};
-  next();
+/* =======  quiz flow  ======= */
+function beginQuiz(meta) {
+  current = score = 0;
+  answers = [];
+  session = { date: Date.now(), ...meta };
+  nextQuestion();
 }
-function next(){
-  const q=questions[current];
-  txt("#questionNumber",`Сұрақ ${current+1}/${questions.length}`);
-  txt("#questionText",q.question);
-  $("#options").innerHTML=q.options.map((o,i)=>`<label><input type="radio" name="opt" value="${i}"><span>${o}</span></label>`).join("");
+
+function nextQuestion() {
+  const q = questions[current];
+
+  txt("#questionNumber", `Сұрақ ${current + 1}/${questions.length}`);
+  txt("#questionText",   q.question);
+
+  /* answer options */
+  $("#options").innerHTML = q.options
+    .map((opt, i) =>
+      `<label class="option">
+         <input type="radio" name="opt" value="${i}">
+         <span>${opt}</span>
+       </label>`).join("");
+
   startTimer();
 }
-function startTimer(){
-  clearInterval(timerId); let t=timePerQ; txt("#timer",t+"s");
-  timerId=setInterval(()=>{t--;txt("#timer",t+"s");if(t<=0){clearInterval(timerId);submit();}},1000);
-}
-$("#submitBtn").onclick=submit;
-function submit(){
+
+function startTimer() {
   clearInterval(timerId);
-  const sel=document.querySelector("input[name='opt']:checked"), pick=sel?+sel.value:null;
-  if(pick===questions[current].answerIndex) score++;
-  answers.push({q:questions[current].question,user:pick,correct:questions[current].answerIndex});
-  current++; current<questions.length?next():finish();
+  let t = timePerQ;
+  txt("#timer", t + "s");
+  timerId = setInterval(() => {
+    txt("#timer", --t + "s");
+    if (t <= 0) { clearInterval(timerId); submitAnswer(); }
+  }, 1000);
 }
-function finish(){
+
+$("#submitBtn").onclick = submitAnswer;
+
+function submitAnswer() {
+  clearInterval(timerId);
+
+  const picked = +document.querySelector("input[name='opt']:checked")?.value;
+  if (picked === questions[current].answerIndex) score++;
+
+  answers.push({
+    q       : questions[current].question,
+    user    : Number.isFinite(picked) ? picked : null,
+    correct : questions[current].answerIndex
+  });
+
+  current++;
+  current < questions.length ? nextQuestion() : finishQuiz();
+}
+
+function finishQuiz() {
   hideAll(); show("result");
-  txt("#scoreText",`Дұрыс жауаптар: ${score}/${questions.length}`);
-  const hist=JSON.parse(localStorage.getItem("quizHistory")||"[]");
-  hist.push({...sessionMeta,score,answers});
-  localStorage.setItem("quizHistory",JSON.stringify(hist));
+  txt("#scoreText", `Дұрыс жауаптар: ${score}/${questions.length}`);
+
+  const history = JSON.parse(localStorage.getItem("quizHistory") || "[]");
+  history.push({ ...session, score, answers });
+  localStorage.setItem("quizHistory", JSON.stringify(history));
 }
 
-/*  Cabinet  */
-function renderCabinet(){
-  const hist=JSON.parse(localStorage.getItem("quizHistory")||"[]").reverse();
-  const tb=$("#historyTable tbody"); tb.innerHTML="";
-  if(!hist.length){tb.innerHTML="<tr><td colspan='4'>Тарих бос</td></tr>";}
-  hist.forEach(h=>{
-    const d=new Date(h.date).toLocaleDateString("kk-KZ");
-    tb.insertAdjacentHTML("beforeend",
-      `<tr><td>${d}</td><td>${h.subject}</td><td>${h.difficulty}</td><td>${h.score}/${h.total}</td></tr>`);
+/* =======  cabinet (history & stats)  ======= */
+function renderCabinet() {
+  const hist = JSON.parse(localStorage.getItem("quizHistory") || "[]").reverse();
+  const tbody = $("#historyTable tbody");
+  tbody.innerHTML = hist.length ? "" : "<tr><td colspan='4'>Тарих бос</td></tr>";
+
+  hist.forEach(h => {
+    const date = new Date(h.date).toLocaleDateString("kk-KZ");
+    tbody.insertAdjacentHTML("beforeend",
+      `<tr>
+         <td>${date}</td>
+         <td>${h.subject}</td>
+         <td>${h.difficulty}</td>
+         <td>${h.score}/${h.total}</td>
+       </tr>`);
   });
 
-  /* stats */
-  const stat={}; hist.forEach(h=>{
-    if(!stat[h.subject]) stat[h.subject]={attempts:0,correct:0,total:0};
-    stat[h.subject].attempts++; stat[h.subject].correct+=h.score; stat[h.subject].total+=h.total;
+  /* aggregate stats */
+  const stats = {};
+  hist.forEach(h => {
+    stats[h.subject] ??= { attempts: 0, correct: 0, total: 0 };
+    stats[h.subject].attempts++;
+    stats[h.subject].correct += h.score;
+    stats[h.subject].total   += h.total;
   });
-  $("#statsList").innerHTML=Object.entries(stat).map(([s,v])=>{
-    const pct=Math.round(v.correct/v.total*100)||0;
-    return `<li><strong>${s}</strong>: ${v.attempts} тест, орташа ${pct}%</li>`;
-  }).join("")||"<li>Әлі дерек жоқ</li>";
+
+  $("#statsList").innerHTML = Object.entries(stats).map(([subj, v]) => {
+    const pct = Math.round((v.correct / v.total) * 100) || 0;
+    return `<li><strong>${subj}</strong>: ${v.attempts} тест, орташа ${pct}%</li>`;
+  }).join("") || "<li>Әлі дерек жоқ</li>";
 }
-$("#clearHistory").onclick=()=>{if(confirm("Өшіру?")){localStorage.removeItem("quizHistory");renderCabinet();}};
 
-/*  init  */
-navSel("navQuiz"); show("setup");
+$("#clearHistory").onclick = () => {
+  if (confirm("Өшіру?")) {
+    localStorage.removeItem("quizHistory");
+    renderCabinet();
+  }
+};
+
+/* =======  init on load ======= */
+navSel("navQuiz");
+show("setup");

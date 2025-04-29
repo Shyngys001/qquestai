@@ -1,16 +1,22 @@
 /* -------- server.js -------- */
-import dotenv from 'dotenv';
-import express from 'express';
-import cors from 'cors';
-import { OpenAI } from 'openai';
-import path from 'path';
-import { fileURLToPath } from 'url';
+import dotenv         from "dotenv";
+import express        from "express";
+import cors           from "cors";
+import { OpenAI }     from "openai";
+import path           from "path";
+import { fileURLToPath } from "url";
 
+/* 1. .env → process.env */
 dotenv.config();
+
+/* 2. OpenAI */
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+/* 3. basic express */
 const app  = express();
 const port = process.env.PORT || 8000;
 
-/* ES-module-де __dirname алу */
+/* 4. __dirname in ES-modules */
 const __filename = fileURLToPath(import.meta.url);
 const __dirname  = path.dirname(__filename);
 
@@ -18,44 +24,56 @@ const __dirname  = path.dirname(__filename);
 app.use(cors());
 app.use(express.json());
 
-/* Фронтенд файлдары */
-app.use(express.static(path.join(__dirname, '../frontend')));
+/* ---------- static + SPA fallback ---------- */
+app.use(express.static(path.join(__dirname, "../frontend")));
+app.get("*", (_, res) =>
+  res.sendFile(path.join(__dirname, "../frontend/index.html"))
+);
 
-/* SPA → кез келген басқа сұрауды index.html-ге бағыттау */
-app.get('*', (_, res) => {
-  res.sendFile(path.join(__dirname, '../frontend/index.html'));
-});
+/* ---------- /api/generate ---------- */
+app.post("/api/generate", async (req, res) => {
+  /* front-тен келетін өрістер  */
+  const {
+    language   = "Kazakh",
+    subject    = "",
+    difficulty = "easy",
+    count      = 5
+  } = req.body;
 
-/* ---------- OpenAI ---------- */
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+  const prompt = `
+Generate ${count} ${difficulty}-level multiple-choice quiz questions in ${language}.
+Topic (school subject): "${subject}".
 
-/**
- * POST /api/generate
- * body: { topic: "History", num: 5 }
- * returns: [{ q, answers:[…], correct }]
- */
-app.post('/api/generate', async (req, res) => {
-  const { topic = '', num = 5 } = req.body;
+Return pure JSON array where each object is:
+{
+  "question": "...",
+  "options":  ["A","B","C","D"],
+  "answerIndex": 0
+}
+NO markdown, NO comments.`;
 
   try {
-    const prompt = `
-Generate ${num} multiple-choice quiz questions on "${topic}".
-Return JSON array where each object has:
-  q       – question text
-  answers – array of 4 options
-  correct – index (0-3) of correct option
-JSON only, no markdown.`;
-
-    const completion = await openai.chat.completions.create({
-      model: 'gpt-3.5-turbo',
-      messages:[{ role: 'user', content: prompt }]
+    const chat = await openai.chat.completions.create({
+      model: "gpt-3.5-turbo",
+      messages: [{ role: "user", content: prompt }]
     });
 
-    const data = JSON.parse(completion.choices[0].message.content);
-    res.json(data);
+    /* GPT sometimes wraps in ```json ... ``` */
+    let raw = chat.choices?.[0]?.message?.content?.trim() ?? "[]";
+    if (raw.startsWith("```")) raw = raw.replace(/```[a-z]*|```/g, "");
+
+    /* {{q,answers,correct}} → {{question,options,answerIndex}} fallback */
+    const legacy = JSON.parse(raw);
+    const normalized = legacy.map(o => ({
+      question:     o.question     ?? o.q,
+      options:      o.options      ?? o.answers,
+      answerIndex:  o.answerIndex  ?? o.correct
+    }));
+
+    res.json(normalized);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'OpenAI error' });
+    res.status(500).json({ error: "OpenAI error" });
   }
 });
 

@@ -1,5 +1,10 @@
-# secrets
-.env
-
-# deps
+# түбінде .gitignore
+# жалпы
 node_modules/
+.DS_Store
+
+# құпия файлдар
+backend/.env
+
+# IDE кэштері
+.vscode/
